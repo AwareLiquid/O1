@@ -23,7 +23,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .config import MTLNNConfig
-from .parallel_scan import pscan_constant_A
+from .parallel_scan import pscan, pscan_constant_A
 
 
 # ---------------------------------------------------------------------------
@@ -52,58 +52,45 @@ class VectorizedMultiScaleResonance(nn.Module):
         self.tau_min = config.tau_min
         self.tau_max = config.tau_max
         self.dt = config.dt
-        self.dynamic_scale_gates = getattr(config, "dynamic_scale_gates", True)
-        self.scale_gate_active_threshold = getattr(config, "scale_gate_active_threshold", 0.5)
-        self.scale_gate_skip_threshold = getattr(config, "scale_gate_skip_threshold", 0.0)
-        self.sparse_resonance_kernel = getattr(config, "sparse_resonance_kernel", False)
-        self.sparse_resonance_top_k = getattr(config, "sparse_resonance_top_k", 1)
 
         # Shared weights: (P, S, D, D) — independent W_in per (proto, scale)
         self.W_in = nn.Parameter(torch.empty(P, S, D, D))
         self.b_in = nn.Parameter(torch.zeros(P, S, D))
         nn.init.normal_(self.W_in, mean=0.0, std=0.02)
 
-        self.compute_skip_threshold = getattr(config, "compute_skip_threshold", 0.0)
-
         # log_tau in raw space (softplus-parameterised); shape (P, S).
-        # Init from config.resonance_freqs so each scale starts at a different τ.
         log_tau_init = torch.empty(P, S)
-        for s, tau_s in enumerate(config.resonance_freqs[:S]):
-            v = math.log(math.expm1(max(tau_s - config.tau_min, 1e-6)))
-            log_tau_init[:, s] = v
+        if getattr(config, "protofilament_timescales", False):
+            # Route B: each protofilament owns one distinct τ. Sweep τ
+            # geometrically across the P dimension (tau_min → tau_max), S=1.
+            for p in range(P):
+                frac = p / max(P - 1, 1)
+                tau_p = config.tau_min * (config.tau_max / config.tau_min) ** frac
+                v = math.log(math.expm1(max(tau_p - config.tau_min, 1e-6)))
+                log_tau_init[p, :] = v
+        else:
+            # Legacy: every protofilament runs the same S scales.
+            for s, tau_s in enumerate(config.resonance_freqs[:S]):
+                v = math.log(math.expm1(max(tau_s - config.tau_min, 1e-6)))
+                log_tau_init[:, s] = v
         self.log_tau = nn.Parameter(log_tau_init)
 
-        # blend_weights: (P, S) — statically balances the default scale mixture
+        # blend_weights: (P, S) — softmax → uniform at init
         self.blend_weights = nn.Parameter(torch.zeros(P, S))
-        
-        # Endogenous Dynamic Kappa Gate: dynamically activates tau channels
-        # based on input. Initialized open so channels are not dead at startup.
-        if self.dynamic_scale_gates:
-            self.kappa_gate = nn.Linear(D, S)
-            nn.init.constant_(
-                self.kappa_gate.bias,
-                getattr(config, "scale_gate_init_bias", 2.0),
-            )
-        self.register_buffer("last_scale_gate_mean", torch.ones(S), persistent=False)
-        self.register_buffer("last_active_scale_ratio", torch.ones(()), persistent=False)
-        self.register_buffer("last_nonzero_scale_ratio", torch.ones(()), persistent=False)
-        self.register_buffer("last_sparse_scale_ratio", torch.ones(()), persistent=False)
-        self.register_buffer("last_sparse_selected_scales", torch.ones(S), persistent=False)
-        
-        self.use_predictive_coding = getattr(config, "use_predictive_coding", False)
-        if self.use_predictive_coding and S > 1:
-            # Predict faster channel (s-1) from slower channel (s)
-            self.W_pred = nn.Parameter(torch.empty(P, S-1, D, D))
-            nn.init.normal_(self.W_pred, mean=0.0, std=0.02)
-        self.register_buffer("last_pred_error", torch.zeros(()), persistent=False)
 
     def forward(self, x: torch.Tensor, h_prev: torch.Tensor,
-                use_scan: bool = True):
+                use_scan: bool = True, dt: torch.Tensor = None):
         """
         x:        (B, T, P, D)
         h_prev:   real-mode:    (B, P, S, D)  — per-scale recurrent state
                   legacy mode:  (B, T, P, D)  — broadcast h_prev (no recurrence)
                   None:         treated as zeros
+        dt:       None → uniform time step self.dt (fast constant-A scan, the
+                  default LM path — behaviour is byte-identical to before).
+                  (B, T) or (T,) → per-step elapsed time between samples, for
+                  irregularly-sampled / continuous-time inputs. A larger gap
+                  Δt decays the recurrent state more (decay = exp(-Δt/τ)),
+                  which is the defining CfLTC property for non-uniform sampling.
 
         Returns (out, h_last) where
           out    : (B, T, P, D)  — blended across scales
@@ -121,74 +108,41 @@ class VectorizedMultiScaleResonance(nn.Module):
         B, T, P, D = x.shape
         S = self.S
 
-        dynamic_kappa = None
-        sparse_scale_mask = None
-        active_idx = torch.arange(S, device=x.device)
-        if self.dynamic_scale_gates:
-            dynamic_kappa = torch.sigmoid(self.kappa_gate(x))         # (B,T,P,S)
-
-            if self.sparse_resonance_kernel:
-                top_k = max(1, min(int(self.sparse_resonance_top_k), S))
-                gate_mean = dynamic_kappa.detach().mean(dim=(0, 1, 2)) # (S,)
-                active_idx = torch.topk(gate_mean, k=top_k).indices.sort().values
-                sparse_scale_mask = torch.zeros(S, device=x.device, dtype=torch.bool)
-                sparse_scale_mask[active_idx] = True
-
-                with torch.no_grad():
-                    self.last_sparse_scale_ratio = torch.tensor(
-                        float(top_k) / float(S), device=x.device, dtype=x.dtype
-                    )
-                    self.last_sparse_selected_scales = sparse_scale_mask.to(dtype=x.dtype)
-            else:
-                with torch.no_grad():
-                    self.last_sparse_scale_ratio = torch.ones((), device=x.device, dtype=x.dtype)
-                    self.last_sparse_selected_scales = torch.ones(S, device=x.device, dtype=x.dtype)
-        else:
-            with torch.no_grad():
-                self.last_sparse_scale_ratio = torch.ones((), device=x.device, dtype=x.dtype)
-                self.last_sparse_selected_scales = torch.ones(S, device=x.device, dtype=x.dtype)
-
         # 1. Per-(proto, scale) input projection: (B,T,P,D) × (P,S,D,D) → (B,T,P,S,D)
-        W_in = self.W_in[:, active_idx, :, :]
-        b_in = self.b_in[:, active_idx, :]
-        A = torch.einsum("btpd,pkde->btpke", x, W_in)                 # (B,T,P,K,D)
-        A = A + b_in                                                   # broadcast (P,K,D)
+        A = torch.einsum("btpd,psde->btpse", x, self.W_in)            # (B,T,P,S,D)
+        A = A + self.b_in                                              # broadcast (P,S,D)
         A = torch.sigmoid(A)
 
-        # 2. Decay per (proto, scale)
+        # 2. Decay per (proto, scale). Uniform (P,S) when dt is None; per-step
+        #    (B,T,P,S) for irregularly-sampled inputs.
         tau = F.softplus(self.log_tau) + self.tau_min                 # (P,S)
         tau = tau.clamp(self.tau_min, self.tau_max)
-        decay = torch.exp(-self.dt / tau)                              # (P,S)
-        decay_active = decay[:, active_idx]                            # (P,K)
-        K_active = active_idx.numel()
+        if dt is None:
+            decay = torch.exp(-self.dt / tau)                          # (P,S)
+        else:
+            if dt.dim() == 1:                                          # (T,) → (B,T)
+                dt = dt.unsqueeze(0).expand(B, T)
+            decay = torch.exp(-dt.reshape(B, T, 1, 1).clamp(min=1e-6)
+                              / tau.view(1, 1, P, S))                  # (B,T,P,S)
 
         if not use_scan:
             # Legacy parallel mode — h_prev: (B, T, P, D) broadcast across T
-            decay_full = decay_active.view(1, 1, P, K_active, 1)
+            decay_full = (decay.view(1, 1, P, S, 1) if dt is None
+                          else decay.unsqueeze(-1))                    # (…,P,S,1)
             if h_prev is None:
-                h_prev_full = torch.zeros(B, T, P, S, D, device=x.device, dtype=x.dtype)
-                h_prev_e = h_prev_full[:, :, :, active_idx, :]
+                h_prev_e = torch.zeros(B, T, P, S, D, device=x.device, dtype=x.dtype)
             else:
                 # Allow either (B,T,P,D) or (B,P,S,D) — broadcast to (B,T,P,S,D)
                 if h_prev.dim() == 4 and h_prev.shape == (B, T, P, D):
-                    h_prev_full = h_prev.unsqueeze(3).expand(B, T, P, S, D).clone()
-                    h_prev_e = h_prev.unsqueeze(3).expand(B, T, P, K_active, D)
+                    h_prev_e = h_prev.unsqueeze(3).expand(B, T, P, S, D)
                 else:
                     # Treat as (B, P, S, D) → broadcast across T
-                    h_prev_full = h_prev.unsqueeze(1).expand(B, T, P, S, D).clone()
-                    h_prev_e = h_prev[:, :, active_idx, :].unsqueeze(1).expand(B, T, P, K_active, D)
-            h_active = h_prev_e * decay_full + A * (1.0 - decay_full)
-            if K_active == S:
-                h_per_scale = h_active
-            else:
-                h_per_scale = h_prev_full
-                h_per_scale[:, :, :, active_idx, :] = h_active
+                    h_prev_e = h_prev.unsqueeze(1).expand(B, T, P, S, D)
+            h_per_scale = h_prev_e * decay_full + A * (1.0 - decay_full)
         else:
             # Real recurrence via parallel scan.
             # pscan expects (..., T, D); permute (B,T,P,S,D) -> (B,P,S,T,D)
-            A_perm = A.permute(0, 2, 3, 1, 4)                          # (B,P,K,T,D)
-            X = (1.0 - decay_active).view(1, P, K_active, 1, 1) * A_perm # (B,P,K,T,D)
-            decay_bps = decay_active.unsqueeze(0).expand(B, P, K_active) # (B,P,K)
+            A_perm = A.permute(0, 2, 3, 1, 4)                          # (B,P,S,T,D)
 
             # Initial state: h_prev is the per-scale state (B, P, S, D).
             # If only (B, P, D) is passed, broadcast across scales (zero-init common case).
@@ -204,72 +158,22 @@ class VectorizedMultiScaleResonance(nn.Module):
                     f"expected (B,P,S,D)=({B},{P},{S},{D}) or (B,P,D)=({B},{P},{D})"
                 )
 
-            h_init_active = h_init[:, :, active_idx, :]
-            H = pscan_constant_A(decay_bps, X, h_init=h_init_active)  # (B,P,K,T,D)
-            h_active = H.permute(0, 3, 1, 2, 4)                       # (B,T,P,K,D)
-            if K_active == S:
-                h_per_scale = h_active
+            if dt is None:
+                # Fast path: decay constant in T → constant-A scan (unchanged).
+                X = (1.0 - decay).view(1, P, S, 1, 1) * A_perm         # (B,P,S,T,D)
+                decay_bps = decay.unsqueeze(0).expand(B, P, S)         # (B,P,S)
+                H = pscan_constant_A(decay_bps, X, h_init=h_init)      # (B,P,S,T,D)
             else:
-                h_per_scale = h_init.unsqueeze(1).expand(B, T, P, S, D).clone()
-                h_per_scale[:, :, :, active_idx, :] = h_active
+                # Continuous-time path: per-step decay → general scan.
+                decay_pst = decay.permute(0, 2, 3, 1)                  # (B,P,S,T)
+                X = (1.0 - decay_pst).unsqueeze(-1) * A_perm           # (B,P,S,T,D)
+                H = pscan(decay_pst, X, h_init=h_init)                 # (B,P,S,T,D)
+            h_per_scale = H.permute(0, 3, 1, 2, 4)                     # (B,T,P,S,D)
 
-        # 3. Dynamic Channel Attention (Endogenous Anesthesia) + Blending
+        # 3. Blend across scales with softmax(blend_weights)
         w = F.softmax(self.blend_weights, dim=-1)                     # (P,S)
-        if self.dynamic_scale_gates:
-            if sparse_scale_mask is not None:
-                dynamic_kappa = dynamic_kappa.masked_fill(
-                    ~sparse_scale_mask.view(1, 1, 1, S), 0.0
-                )
-
-            # Optional hard masking. In dense mode this masks the blend only;
-            # in sparse mode the upstream resonance has already skipped
-            # unselected scales.
-            skip_threshold = max(self.compute_skip_threshold, self.scale_gate_skip_threshold)
-            if skip_threshold > 0.0:
-                active = dynamic_kappa >= skip_threshold
-                top_source = dynamic_kappa
-                if sparse_scale_mask is not None:
-                    top_source = top_source.masked_fill(
-                        ~sparse_scale_mask.view(1, 1, 1, S), -1.0
-                    )
-                top_idx = top_source.argmax(dim=-1, keepdim=True)
-                top_one_hot = torch.zeros_like(dynamic_kappa, dtype=torch.bool)
-                top_one_hot.scatter_(-1, top_idx, True)
-                active = active | top_one_hot
-                dynamic_kappa = dynamic_kappa.masked_fill(~active, 0.0)
-
-            gated_w = w.view(1, 1, P, S) * dynamic_kappa
-            gated_w = gated_w / gated_w.sum(dim=-1, keepdim=True).clamp_min(1e-6)
-
-            with torch.no_grad():
-                self.last_scale_gate_mean = dynamic_kappa.detach().mean(dim=(0, 1, 2))
-                self.last_active_scale_ratio = (
-                    dynamic_kappa.detach() > self.scale_gate_active_threshold
-                ).float().mean()
-                self.last_nonzero_scale_ratio = (
-                    dynamic_kappa.detach() > 0.0
-                ).float().mean()
-        else:
-            gated_w = w.view(1, 1, P, S).expand(B, T, P, S)
-            with torch.no_grad():
-                self.last_scale_gate_mean = torch.ones(S, device=x.device, dtype=x.dtype)
-                self.last_active_scale_ratio = torch.ones((), device=x.device, dtype=x.dtype)
-                self.last_nonzero_scale_ratio = torch.ones((), device=x.device, dtype=x.dtype)
-
-        out = (h_per_scale * gated_w.unsqueeze(-1)).sum(dim=3)        # (B,T,P,D)
-
-        # 4. Multi-Scale Predictive Coding Loss
-        if self.use_predictive_coding and self.S > 1:
-            if self.training:
-                # Predict faster channel (idx :-1) from slower channel (idx 1:)
-                predictor = h_per_scale[:, :, :, 1:, :]                     # (B,T,P,S-1,D)
-                target = h_per_scale[:, :, :, :-1, :].detach()              # (B,T,P,S-1,D)
-                pred = torch.einsum("btpse,psed->btpsd", predictor, self.W_pred) 
-                
-                # mse loss of prediction vs target
-                self.last_pred_error = F.mse_loss(pred, target)
-            else:
-                self.last_pred_error.zero_()
+        w_b = w.view(1, 1, P, S, 1)                                    # (1,1,P,S,1)
+        out = (h_per_scale * w_b).sum(dim=3)                          # (B,T,P,D)
 
         # Per-scale last state for caching — preserves the scan's internal
         # state across calls without going through the blend.
@@ -325,7 +229,7 @@ class LateralCoupling(nn.Module):
 
         # --- Static identity residual ---
         self.W_lat = nn.Parameter(torch.eye(n_protofilaments))
-        self.rmc_gate = nn.Parameter(torch.zeros(()))
+        self.rmc_gate = nn.Parameter(torch.zeros(()))  # NOTE: sigmoid(0)=0.5 → RMC attention contributes 50% at init
 
     def forward(self, h: torch.Tensor) -> torch.Tensor:
         # Identity / static-matrix residual
@@ -444,10 +348,13 @@ class MTLNNLayer(nn.Module):
         h_prev: torch.Tensor = None,           # (B,P,S,D) [real] or (B,P,D) [legacy] or None
         position_offset: int = 0,
         use_scan: bool = True,
+        dt: torch.Tensor = None,               # (B,T)/(T,) per-step elapsed time, or None
     ):
         """
         use_scan=True (default): real recurrence via parallel scan.
         use_scan=False         : legacy parallel mode (h_prev broadcast across T).
+        dt: None → uniform time steps (default). (B,T)/(T,) → per-step elapsed
+            time for irregularly-sampled inputs (threaded into the CfLTC decay).
 
         Returns (out, h_last_per_scale) where h_last_per_scale: (B, P, S, D) is
         the per-scale recurrent state to cache for the next forward.
@@ -462,7 +369,7 @@ class MTLNNLayer(nn.Module):
         # 2. Run the resonance bank. It accepts h_prev in either form and
         # returns the per-scale state we need to cache.
         h_stack, h_last_per_scale = self.resonance(
-            x_split, h_prev, use_scan=use_scan
+            x_split, h_prev, use_scan=use_scan, dt=dt
         )                                                              # (B,T,P,D), (B,P,S,D)
 
         # 4. Lateral coupling with GTP temporal gate.

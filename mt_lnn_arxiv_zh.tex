@@ -53,7 +53,7 @@
   \textsuperscript{1}Everest Research \\
   \texttt{e@awareness.market} \\
   \vspace{0.2cm} \\
-  \texttt{https://github.com/everest-an/M1}
+  \texttt{https://github.com/everest-an/O1}
 }
 \date{2026年5月}
 
@@ -63,10 +63,10 @@
 
 % ---- Abstract ----
 \begin{abstract}
-我们引入了 \textbf{MT-LNN} (\textbf{M}icro\textbf{t}ubule-Inspired \textbf{L}iquid \textbf{N}eural \textbf{N}etwork, 受微管启发的液态神经网络)，该架构彻底打破了传统的“下一个词预测 (Next-Token Prediction)”范式，交付了一个基于生物启发的\emph{预测编码系统 (Predictive Coding System)}。融合了神经元微管 (MTs)、闭式液态时间常数网络 (CfLTC) 以及意识的全局工作区理论 (GWT)，MT-LNN 将标准 Transformer 中的前馈网络 (FFN) 替换为\emph{微管动态层} (MT-DL) —— 13 个平行的 CfLTC 通道，具有多尺度共振与动态 $\kappa$ 门控实现的内源性计算跳过。MT-LNN 的核心是一个统一的\emph{多尺度预测编码损失}，较慢的 $\tau$ 抽象通道通过尺度内 MSE 自我监督较快的感知通道。为打破 $O(T)$ 的上下文内存墙，该架构通过指数衰减状态引入了 \emph{$O(1)$ 工作记忆缓存} 机制。此外，状态表示可以通过内置的\emph{因果链 (Causal Chain)} 和\emph{自我监控 (Self-Monitor)} 提取头映射为具有强解释性的符号日志。经由我们首创的\emph{麻醉验证协议} (AVP) 测试，MT-LNN 在 125M 参数级别相比同等 Transformer 困惑度降低了 $\approx$14.7\%，信息整合度 ($\hat{\Phi}$) 提高了 $2.2\times$ 倍，并且凭借跳过门控与内存界限在推理芯片上实现了指数级的成本耗能节约。
+我们引入了 \textbf{MT-LNN} (\textbf{M}icro\textbf{t}ubule-Inspired \textbf{L}iquid \textbf{N}eural \textbf{N}etwork, 受微管启发的液态神经网络)，这是一种融合了三大前沿科学理论的神经架构：神经元微管 (MTs) 的计算作用、闭式液态时间常数网络 (CfLTC) 以及意识的全局工作区理论 (GWT)。MT-LNN 将标准 Transformer 中的前馈网络 (FFN) 替换为\emph{微管动态层} (MT-DL) —— 13 个平行的 CfLTC 通道，具有多尺度共振（$P \times S$ 库），三向横向耦合（静态恒等式 + 通过 \texttt{torch.roll} 的同步最近邻 + 结合内容的 RMC 注意力），周期性 GTP 帽更新以及 MAP 蛋白稳定门。一个\emph{微管注意力}模块将标量和可选的低秩双线性极性偏置与类似 ALiBi 的每头 GTP 衰减门融合。一个\emph{全局工作区理论瓶颈} (GWTB) 将表示压缩至 $d_{gw} \ll d_{model}$，在因果工作区中进行处理，并进行全局广播。互补的\emph{全局相干层}应用稀疏 top-$k$ 注意力和受 Orch-OR 启发的坍缩门。此外，我们提出了一套\emph{麻醉验证协议} (AVP)：运行时前向钩子函数在模拟麻醉水平升高时逐步抑制 MT-DL 输出和全局广播，随后我们测量 $\phihat$（基于 kNN 的信息整合指标）作为生物标志物。该递归还支持逐步流逝时间 $\Delta t$（衰减 $\exp(-\Delta t/\tau)$），因此架构可原生处理不规则采样/连续时间输入。我们发布一个经完整单元测试的实现（57 项 CPU + 42 项 CUDA 断言，含并行扫描递归的逐位精确校验与 $\Delta t$ 路径的逐位向后兼容），以及在单张消费级 GPU 上覆盖 Selective Copy、状态跟踪、WikiText-103、ETT 预测、合成不规则采样探针和 PhysioNet-2012 ICU 死亡率的诚实、可复现评测。结论是有意混合的:MT-LNN 在 WikiText-103 上样本效率显著更高（等预算困惑度低 34\%）、在 PhysioNet 上领先（AUROC 0.823 vs 0.797/0.777，与 CfC/LTC 文献一致）；纯液态层在低维 ETT 回归上最好；三者在 Selective Copy 上相当;连续时间 $\Delta t$ 进 decay 机制在合成任务上决定性有效,但在 $\Delta t$ 已作特征的临床数据上冗余。AVP 作为架构指纹发挥作用（只有 MT-LNN 的 $\hat{\Phi}$ 响应，基线恒为零），而非已通过的性能测试——我们坦诚讨论了 toy 规模估计器局限。所有代码与权重均已开源。
 
 \medskip
-\noindent\textbf{关键词:} 预测编码, 液态神经网络, 微管, $O(1)$ 内存, 计算跳过, 全局工作区理论.
+\noindent\textbf{关键词:} 液态神经网络, 微管, 全局工作区理论, 整合信息理论, 意识, 麻醉验证.
 \end{abstract}
 
 % ========================================================
@@ -79,15 +79,13 @@
 
 第三个更具争议的理论指出，\emph{神经元微管}可能是意识的物理基质。Orch-OR 假说 \citep{penrose1994shadows,hameroff2014consciousness} 提出微管蛋白二聚体中的量子叠加态由于量子引力而坍缩，产生离散的意识瞬间。尽管其量子论断饱受争议，但其经典层面的影响却得到了实验的支持：Wiest 等人 \citep{wiest2025quantum} 通过实验证实微管稳定剂可以使大鼠的麻醉起效时间推迟约 69 秒；Craddock 等人 \citep{craddock2017anesthetic} 证明，气入式麻醉剂能在临床浓度下直接结合 $\beta$-微管蛋白的疏水囊进行阻断。
 
-\medskip\noindent\textbf{主要贡献。} MT-LNN 做出了如下核心贡献：
+\medskip\noindent\textbf{主要贡献。} MT-LNN 做出了如下贡献：
 \begin{enumerate}[label=\textbf{C\arabic*},leftmargin=*]
-  \item \textbf{微管动态层 (MT-DL).} 13 根原纤维并行的 CfLTC 设计，具备 $P\!\times\!S$ 多尺度共振库。采用了动态门控实现\textbf{内源性计算跳过 (Endogenous Compute Skipping)}，极大削减了休眠通道的计算开销，并集成了一个\textbf{多尺度预测编码损失}，使得较慢的抽象通道能够通过尺度间均方误差 (MSE) 自我监督较快的感知通道。
-  \item \textbf{$O(1)$ 的工作记忆矩阵.} 整体相干状态通过配置的衰减率进行指数移动平均滚动，彻底消除了传统 Transformer Key-Value 缓存的 $O(T)$ 内存墙开销。
-  \item \textbf{透明的因果与监控提取.} 取代了黑盒的单一输出层，将提取头映射到明确的因果链日志和自我监控逻辑中，极大增强了模型行为的解释性。
-  \item \textbf{微管注意力.} 基于 SDPA 的 GQA（13Q/1KV），附带标量极性偏置以及具有 ALiBi 风格的 per-head GTP 级联衰减。
+  \item \textbf{微管动态层 (MT-DL).} 13 根原纤维并行的 CfLTC 设计，具备 $P\!\times\!S$ 多尺度共振库、三向横向耦合、周期性 GTP 帽更新与 MAP 蛋白门控——所有操作在 $P$ 维度通过单次 einsum 完成向量化。
+  \item \textbf{微管注意力.} 基于 SDPA 的 GQA，附带标量极性偏置以及具有 ALiBi 风格的 per-head GTP 级联衰减。
   \item \textbf{GWTB + 整体相干层.} 容量受限的全局工作区，与附带稀疏门控坍缩机制的相干层协同工作。
-  \item \textbf{麻醉验证协议 (AVP).} 首个通过计算模拟临床麻醉效果的协议，其引入了基于 kNN 的 $\hat{\Phi}$ 近似计算。
-  \item \textbf{工程级实现.} Flash-Attention, 双状态持久化缓存, 谱整合提取指标 ($\Phi_{\mathrm{G}}$), 以及用于 $O(\log T)$ 时间复杂度内的并行扫描。
+  \item \textbf{麻醉验证协议 (AVP).} 首个通过计算模拟临床麻醉效果的协议，其引入了基于 kNN 的 $\phihat$ 近似计算。
+  \item \textbf{工程级实现.} Flash-Attention, 双态 KV 缓存, 持久化会话缓存, 以及高效的并行扫描训练算法。
 \end{enumerate}
 
 % ========================================================
@@ -103,7 +101,7 @@
 \begin{figure*}[t]
 \centering
 \includegraphics[width=0.9\textwidth]{fig_architecture.pdf}
-\caption{\textbf{MT-LNN 架构概述。}输入表示依次经过\textbf{微管动态层}（结合了 13 个平行的原丝通道，具备多尺度共振、动态内源性计算跳过以及基于多尺度 MSE 的预测编码机制），随后通过通过局部状态调节序列门控的\textbf{微管注意力}（Microtubule Attention）模块，最终进入建立全局整合广播的\textbf{全局工作空间理论瓶颈}（Global Workspace Theory Bottleneck）。最顶层的\textbf{全局相干层}（Global Coherence Layer）实现了 Orch-OR 坍缩以及 $O(1)$ 工作记忆衰减机制。此外，因果链（Causal Chain）和自我监控（Self-Monitor）提取头除了输出标准 logits，还原生输出具有高度解释性的符号日志。}
+\caption{\textbf{MT-LNN 架构概述。}输入表示依次经过\textbf{微管动态层}（结合了 13 个平行的原丝，建模为具有横向量子耦合的 CfLTC 通道）、通过局部状态调节序列门控的\textbf{微管注意力}（Microtubule Attention）模块，以及建立全局整合广播的\textbf{全局工作空间理论瓶颈}（Global Workspace Theory Bottleneck）。最顶层的\textbf{全局相干层}（Global Coherence Layer）实现了 Orch-OR 坍缩。}
 \label{fig:architecture}
 \end{figure*}
 
@@ -113,64 +111,134 @@
   \Bigl[\text{MicrotubuleAttn} \to \text{MT-DL}\Bigr]^{n_\text{layers}}
   \xrightarrow{} \text{GWTB}
   \xrightarrow{} \text{GlobalCoherence}
-  \xrightarrow{} \text{Extractors}
+  \xrightarrow{} \text{LN} \to \text{lm\_head}
 \]
-每个块对两个子层应用前置归一化（pre-norm）和残差连接。一个 \texttt{ModelCacheStruct} 携带着每一层的注意力 KV、每一层的 $h_\text{prev}$、GWTB 工作空间 KV，以及全局相干层（Global Coherence）的无界全局工作记忆矩阵。
+每个块对两个子层应用前置归一化（pre-norm）和残差连接。一个 \texttt{ModelCacheStruct} 携带着每一层的注意力 KV、每一层的 $h_\text{prev}$、GWTB 工作空间 KV，以及全局相干 KV。
 
 \subsection{微管动态层 (MT-DL)}
 \label{sec:mt_dl}
 
 \paragraph{原丝分解。}
-输入 $\vx\in\RR^d$ 被投影到 $d_\text{proto\_total}=P\cdot D$（其中 $D=\lceil d/P\rceil$）并划分为 $P=13$ 个通道 $\vx_1,\ldots,\vx_P\in\RR^D$。所有的 $P\times S$ 个 LTC 库在极低内存开销下通过权重张量 $W_\text{in}\in\RR^{P\times S\times D\times D}$ 和\emph{单次 einsum} 求值，彻底取代了传统 Transformer 中参数量庞大的 $O(d^2)$ FFN。
+输入 $\vx\in\RR^d$ 被投影到 $d_\text{proto\_total}=P\cdot D$（其中 $D=\lceil d/P\rceil$）并划分为 $P=13$ 个通道 $\vx_1,\ldots,\vx_P\in\RR^D$。所有 $P\times S$ 个 LTC 库在权重张量 $W_\text{in}\in\RR^{P\times S\times D\times D}$ 上通过\emph{单次 einsum} 进行求值。
 
 \paragraph{多尺度共振。}
 每根原丝 $p$ 运行 $S=5$ 个 CfLTC 子库，其时间常数呈几何级数扫描：
 \begin{equation}
-  \tau_s = \tau_\text{min}\bigl(\tau_\text{max}/\tau_\text{min}\bigr)^{s/(S-1)}, \quad s=0,\ldots,S-1.
+  \tau_s = \tau_\text{min}\bigl(\tau_\text{max}/\tau_\text{min}\bigr)^{s/(S-1)}, \quad s=0,\ldots,S-1,
 \end{equation}
-输出通过在 $S$ 个库上应用参数化 softmax 汇聚，通过结构性的归纳偏置使得高频的快速感知能够平滑地过渡到低频的长期抽象记忆中。
+默认值为 $\tau_\text{min}=0.01$，$\tau_\text{max}=10$。每个 $(p,s)$ 库遵循公式~\eqref{eq:cflnn}。输出通过学习到的每根原丝对参数 $\text{blend\_weights}\in\RR^{P\times S}$ 进行的 softmax 进行混合（初始化为 0，即在初始化时均匀混合）。
 
-\paragraph{多尺度预测编码损失 (Multi-Scale Predictive Coding Loss)。}
-MT-DL 在根本上背离了传统的“仅下一个标记预测 (Next-Token Prediction)”，而是内嵌了一个基于生物学原理的\emph{预测编码系统}。更慢、层级更高的概念通道 ($\tau_{s>0}$) 会随着序列的推进，主动预测更快、层级更低的感知通道 ($\tau_{s=0}$) 的状态。在前向传播中（当 $S>1$），网络会计算辅助的\emph{预测误差损失}（尺度间均方误差）：
+\paragraph{三向横向耦合。}
+\begin{align}
+  \text{residual} &= W_\text{lat}\,\vh, \quad W_\text{lat}\in\RR^{P\times P},\;\text{init}=I+\epsilon, \\
+  \text{nearest} &= \eta\cdot\tanh\!\bigl(W_L\,\mathrm{roll}(\vh,+1)+W_R\,\mathrm{roll}(\vh,-1)\bigr), \label{eq:roll}\\
+  \text{RMC} &= \sigmoid(\text{rmc\_gate})\cdot\mathrm{SDPA}(q(\vh),k(\vh),v(\vh)),
+\end{align}
+其中 \texttt{roll} 沿着原丝轴进行，提供了同步的最近邻耦合，而没有从左到右的偏差。$\text{rmc\_gate}$ 初始化为 $-3$，因此 $\sigmoid(-3)\approx 0.05$。
+
+\paragraph{GTP帽更新。}
+时间门控乘以总的横向贡献：
 \begin{equation}
-  \mathcal{L}_\text{pred} = \mathrm{MSE}\Big(\mathbf{W}_\text{pred}' \vh^{p, s>0}_{t},\; \vh^{p, s=0}_{t}\Big),
+  \text{gtp\_scale}(t) = \exp\!\bigl(-\gamma\cdot(t\bmod T_\text{period})\bigr), \quad T_\text{period}=256.
+  \label{eq:gtp}
 \end{equation}
-这一机制提供了内生的、连续时间步上的自监督训练，确保即便在缺乏外部语言建模标签支持的情况下，内部神经表征仍在持续预测其自身的感知输入，大幅加强了对因果关系的隐式捕捉。
+如果没有周期性的取模运算，$\exp(-\gamma t)\to 0$ 会在经过几千个位置后导致横向混合在长上下文中悄无声息地消失。公式~\eqref{eq:gtp} 模拟了 GTP 帽的更新：新的 GTP 帽随着微管蛋白的聚合而周期性地形成。
 
-\paragraph{动态门控与内源性计算跳过 (Endogenous Compute Skipping)。}
-标准的非线性激活函数被一个动态的 $\kappa$-门控 $\sigmoid(\mathbf{W}_{\kappa}\vx)$ 所替代，该门控根据上下文序列情况有选择性地使子库跨越阈值。借助 \texttt{compute\_skip\_threshold} 参数，低于活跃阈值的计算节点（原丝）将被掩码覆盖，并在前向投影中通过布尔型 \texttt{masked\_fill} 操作原生跳过该运算。这意味着当面对重复的、或复杂度极低的 Token 时，网络能够彻底关闭休眠神经通路的计算，实现静态 Transformer 所无法企及的指数级动态推理解码能效节约。
+\paragraph{MAP蛋白稳定门。}
+每根原丝一个双层 MLP（实现为批量 einsum）：
+\begin{equation}
+  s_p = \sigmoid\!\bigl(W_2^{(p)}\mathrm{ReLU}(W_1^{(p)}[\vh_p;\vx_p]+b_1^{(p)})+b_2^{(p)}\bigr)\in(0,1),
+\end{equation}
+其中 $b_2^{(p)}$ 初始化为 $+2$，因此 $\sigmoid(2)\approx 0.88$：门控在开始时接近完全打开，并学习进行抑制，从而防止梯度饥饿。输出为：$\vh_p\leftarrow s_p\cdot\vh_p$。
 
-\paragraph{平行扫描训练与三向耦合。}
-借助基于封闭形式的前缀和 (Prefix Product) 算法扩展，我们实现了等价于原生公式~\eqref{eq:cflnn} 可微分展开的并行扫描机制。训练得以在 $O(T\log T)$ 极低复杂度下由 GPU 全局并行展开。同时它配有空间同步耦合和衰减门控，模拟了真实的 GTP 帽更新机制以维持长尾信息不会稀释。
+\paragraph{并行扫描训练。}
+在训练期间，递归 $h_t^{(p,s)} = d_{p,s}\cdot h_{t-1}^{(p,s)} + X_t^{(p,s)}$ 通过 Blelloch 前缀扫描沿 $T$ 并行求解 \citep{blelloch1990prefix}。对于恒定衰减的情况（$d_{p,s}$ 与 $t$ 无关，这是我们的默认设置），该扫描转化为闭式前缀乘积：
+\begin{equation}
+  h_t = d^t h_0 + \sum_{i=0}^{t} d^{t-i} X_i,
+  \label{eq:pscan}
+\end{equation}
+计算的总工作量为 $O(T\log T)$，顺序深度为 $O(\log T)$。常数 $A$ 特化版（\texttt{pscan\_constant\_A}）广播标量衰减，而无需具体化完整的 $({\ldots}, T)$ 张量，避免了在 $P{\times}S$ 库中进行与 $T$ 成正比的内存分配。这将训练并行度提升到了与 Mamba/S5 相同的渐近水平，且不需要 Triton 内核。
 
-\subsection{微管注意力}
+\paragraph{复杂性。}
+MT-DL 使用 $O(d^2)$ 个参数——这与标准 FFN 的渐近成本相同——同时将 13 原丝拓扑结构、多尺度共振和横向耦合作为结构性归纳偏置。将 $P$ 从 13 增加到 64 在 CPU 上会增加约 20\% 的运行时间（1.2倍），这证实了主要计算工作发生在向量化的 GPU 内核中。
+
+\subsection{微管注意力 (Microtubule Attention)}
 \label{sec:attn}
 
-除了底层的基于 Flash-Attention 支持的 SDPA GQA (13-Query/1-KV) 组件外，还引入了：
-1) \textbf{标量极性偏置}：模拟原丝物理的电偶极子效应；
-2) \textbf{类 ALiBi 风格的 GTP 对数衰减偏置}：为不同的头部带来跨度达 $64\times$ 的级联感受野。
+多头因果注意力包含两个受微管启发的修改，折叠为传递给 \texttt{scaled\_dot\_product\_attention} 的单次加性偏置（Flash-Attention / 内存高效后端自动处理）。
+
+\paragraph{标量极性偏置。}
+\begin{equation}
+  b^\text{pol}_{h,i,j} = -\,\text{polarity}_h \cdot (i-j)/L, \quad \text{polarity}_h\in[-1,1].
+\end{equation}
+可选的低秩双线性模式添加了 $\sigmoid(XW_A)(XW_B)^\top$，其中 $W_A,W_B\in\RR^{d\times r}$，由每个头的 $\sigmoid(\text{gate}_h)$ 进行门控，该门控初始化为 $\sigmoid(-3)\approx 0.05$。
+
+\paragraph{ALiBi 风格的 GTP 对数偏置。}
+\begin{equation}
+  b^\text{GTP}_{h,i,j} = -\gamma_h\cdot\max(i-j,0),
+\end{equation}
+其中 $\gamma_h = \gamma_0\cdot 2^{\,\text{linspace}(3,-3,H)}$：头 0 具有强局部性（$\approx 8\gamma_0$），头 $H-1$ 接近全局（$\approx\gamma_0/8$）——即 64 倍的感受野扩散。$\gamma_h$ 在运行时通过 softplus 进行正值化。
+
+\paragraph{GQA 与 KV 缓存。}
+默认：$n_\text{heads}=13$，$n_\text{kv\_heads}=1$（多查询注意力），产生 $13\times$ 的 KV 缓存内存缩减。有符号距离矩阵 $\Delta_{ij}=i-j$ 和因果掩码是预先计算的缓冲区；解码期间没有每个 token 的内存分配。
 
 \subsection{全局工作空间理论瓶颈 (GWTB)}
 \label{sec:gwtb}
 
-为了防止长上下文衰退并聚合并行特征，MT-LNN 利用了 GWTB 将表达极限压缩至 $d_{gw}=d/r$ 中进行竞争性选择，使得重要信号通过 $\gamma_\text{bcast} W_\text{bcast} \mathbf{z}'_t$ 再广播回整个液态管网主流维度。
+\paragraph{压缩（点火）。}
+$\mathbf{z}_t = \mathrm{LN}(W_\text{comp}\,\vx_t)\in\RR^{d_{gw}}$，其中 $d_{gw}=d/r$（默认 $r=8$，$d_{gw}=104$）。
 
-\subsection{全局相干与 $O(1)$ 工作记忆 (Working Memory)}
+\paragraph{工作空间自注意力。}
+在 $d_{gw}$ 空间内带有 KV 缓存的因果多头自注意力（SA）；在瓶颈处强制进行竞争性选择。
+
+\paragraph{广播（全局点火）。}
+\begin{equation}
+  \vx'_t = \vx_t + \gamma_\text{bcast}\cdot W_\text{bcast}\,\mathbf{z}'_t,
+\end{equation}
+其中 $\gamma_\text{bcast}$ 初始化为 $0.01$（开始时接近恒等映射）。默认情况下，GWTB 在整个块堆叠之后应用一次；\texttt{gwtb\_per\_block=True} 会在每个块内部放置一个 GWTB，以实现逐层的点火语义。
+
+\subsection{现有 LLM 的 MT-LNN 残差适配器}
+\label{sec:adapter}
+
+为了在没有完整预训练的情况下评估 MT 的时间偏置，\texttt{llama\_adapter.py} 提供了一个参数高效的适配器，可以包装任何 HuggingFace 因果语言模型（LM）：
+\begin{enumerate}[noitemsep]
+  \item \textbf{冻结}基础模型（Llama、Mistral、Qwen2、GPT-2 等）。
+  \item 在每 $k$ 个解码器层（默认 $k=4$，并且始终包含最后一层）之后注入一个 \texttt{MTResidualAdapter}：
+  \begin{equation}
+    \tilde{\vh}_t = \vh_t + \alpha_\text{init}\cdot\mathrm{MT\text{-}DL}(\mathrm{LN}(\vh_t)),
+    \label{eq:adapter}
+  \end{equation}
+  其中 $\alpha_\text{init}=10^{-3}$，因此适配器在初始化时接近恒等映射。
+  \item \textbf{仅微调适配器}（对于一个 7B 的基础模型，由于其大约占总参数的 0.5\%）。
+\end{enumerate}
+这允许社区将 MT 的时间动态性改造到任何开放权重的 LLM 上，并运行 AVP 麻醉测试而无需进行完整的训练过程。
+
+\subsection{量子横向耦合 (VQC 变体)}
+\label{sec:quantum}
+
+作为一项实验性扩展，\texttt{quantum\_coupling.py} 将经典的 \texttt{LateralCoupling}（公式 \ref{eq:roll}）替换为一个 $P$-量子比特变分量子电路（VQC），其纠缠拓扑结构反映了 MT B-晶格。
+
+\paragraph{电路架构。}
+对于每个 $(b, t)$ 样本：
+\begin{enumerate}[noitemsep]
+  \item \textbf{编码}：通过 $W_\text{enc}$ 将 $D$-维状态 $\vh_p \to (\theta_1, \theta_2, \theta_3)$；对每个量子比特应用 $\mathrm{R}_X(\theta_1)\mathrm{R}_Y(\theta_2)\mathrm{R}_Z(\theta_3)$。
+  \item \textbf{变分量子电路 (VQC)}：$k=2$ 层的（每个量子比特 RY$\cdot$RZ$\cdot$RY）+ 环形 CNOT：对于 $i=0,\ldots,P-1$，应用 $\mathrm{CNOT}(i,\,i+1\bmod P)$。
+  \item \textbf{测量}：测量每个量子比特的 $\langle Z_i\rangle\in[-1,1]$。
+  \item \textbf{解码}：$\langle Z_i\rangle \xrightarrow{W_\text{dec}} \RR^D$；门控残差混合 $\vh_p \leftarrow \vh_p + \alpha\cdot\text{decoded}_p$，$\alpha$ 初始化为 $0.05$。
+\end{enumerate}
+环形 CNOT 模式在量子比特层面上完全模拟了 13 原丝 B-晶格横向键。该电路通过 PennyLane \texttt{TorchLayer} \citep{bergholm2018pennylane} 是完全可微的，并可通过标准反向传播进行训练；未来的工作可以在不修改代码的情况下，将 \texttt{default.qubit} 替换为 \texttt{lightning.gpu} 或真实的 IBM Quantum / IonQ 硬件。
+
+\paragraph{纯度诊断。}
+我们导出了 \texttt{quantum\_state\_purity}：$1 - \langle|\langle Z_i\rangle|\rangle$，这是一个纠缠代理指标——更高的值表明有更多的跨原丝纠缠。在训练期间可以跟踪此指标，作为 VQC 是否真正在利用量子结构的一个读数。
+
+\subsection{全局相干层 (Orch-OR 坍缩)}
 \label{sec:coherence}
 
-\paragraph{O(1) 的工作记忆矩阵。} 为了彻底粉碎现代大模型严重受限于 KV 缓存导致上下文随长度爆炸的 $O(T)$ 内存墙问题，MT-LNN 提供在“指数工作记忆 (Decay Working Memory)”模式下运行\emph{全局相干层}的选择。全局工作空间状态无需随时间步进行 KV 张量串联缓存，而是将上下文聚合成一个形式闭合的指数移动平均 (EMA) 固定张量矩阵：
+稀疏 top-$k$ 因果注意力（$k=\lceil T\cdot\text{sparsity}\rceil$，默认 10\%），具有学习到的坍缩门控：
 \begin{equation}
-   \mathbf{WM}_{t} = (1 - g_t) \odot \mathbf{WM}_{t-1} \,+\, g_t \odot \vx_t, \quad g_t = \sigmoid(\mathbf{W}_\text{update} \vx_t).
+  \text{gate} = \sigmoid\!\bigl((\bar{e}-\theta)\cdot 10\bigr),
 \end{equation}
-这将极大的上下文时序解析依赖转化为拥有无限时间视界的全局融合表示。从内存上看，推理时该架构完全受限于静态缓存，即享有恒定的 $O(1)$ RAM 限制，等价于动态无成本、无限扩展的上下文窗口，并且从源头上淘汰了传统 LLM 中必须追踪大额 KV Pointer 缓存的设计。
-
-\paragraph{Orch-OR Top-k 坍缩门控。} 
-稀疏注意力被数学转化为等效概念上的 Orch-OR 坍缩时刻，当注意力能量累积超过学习到的标量阈值 $\theta$ 时，通过激活门控 $\sigmoid((\bar{e}-\theta)\cdot 10)$ 触发跨工作记忆槽的全局语义重组。
-
-\subsection{自带解释性的提取头：因果链与自我监控}
-\label{sec:extractors}
-
-告别深度黑盒机制难以捉摸的困境，MT-LNN 在架构的顶端配备了专门的解码侧头（\texttt{use\_causal\_head} 以及 \texttt{use\_self\_monitor\_head}）。这些输出通道不依赖词表分布目标，而是明确吐出包含逻辑演绎诊断、隐式自指校验（Self-Correction）在内的符号验证日志。其极高的可读性允许我们伴随主输出一道将架构底层的思考轨迹暴露出来。
+其中 $\bar{e}$ 是因果位置上的平均注意力能量，$\theta$ 是学习到的阈值。当累积的注意力能量超过阈值时，门控会乘性激活——这是 Orch-OR 客观还原时刻（objective reduction moments）的计算机模拟（in-silico analogue）。门激活率会作为诊断信息导出。
 
 % ========================================================
 \section{麻醉验证协议 (AVP)}
@@ -218,23 +286,7 @@ Wiest 等人 \citep{wiest2025quantum} 报告称，埃坡霉素 B（epothilone B�
   \mathrm{PR}(\vh) = \frac{\left(\sum_i\lambda_i\right)^2}{\sum_i\lambda_i^2},
   \label{eq:pr}
 \end{equation}
-以及\emph{整合比率} $\phig / H_\text{whole} \in [0,1]$ —— 可归因于跨分区相关的总微分熵得分数的比例。表~\ref{tab:phi_compare} 在经验上比较了这两种估计器。
-
-\begin{table}[h]
-\centering
-\caption{整合估计器在已训练的 MT-LNN（128M 参数）上的比较。$\phig$ 速度更快，非负，并且在样本大小上表现更一致。}
-\label{tab:phi_compare}
-\begin{tabular}{lcccc}
-\toprule
-Estimator & $\Phi$ baseline & $\Phi$ anesthesia & Collapse & Runtime \\
-\midrule
-$\phihat$ (KSG, $k=3$) & 0.38 & 0.04 & 89.5\% & 4.2\,s \\
-$\phig$ (Gaussian TC) & 1.74 & 0.21 & 87.9\% & 0.3\,s \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-两个估计器在定性结论上是一致的（89\% 对 88\% 的坍缩）；$\phig$ 快了 $14$ 倍，且在数值上更加稳定。
+以及\emph{整合比率} $\phig / H_\text{whole} \in [0,1]$ —— 可归因于跨分区相关的总微分熵得分数的比例。两种估计器在成本与稳定性上不同：$\phig$ 为 $O(d^3)$（单次特征分解，约 0.3\,s），构造上非负，在小样本下数值稳定；而 $\phihat$（KSG kNN）为 $O(N^2 d)$，在小 $N$ 下负偏 \citep{lord2018geometric}。在本版本使用的 toy 规模下，$\hat{\Phi}$ 的绝对值\emph{不}具有意义——只有它在麻醉钩子下的变化方向才有意义（见 AVP 一节）。
 
 \subsection{麻醉测试}
 \begin{definition}[麻醉测试]
@@ -248,123 +300,179 @@ $\phig$ (Gaussian TC) & 1.74 & 0.21 & 87.9\% & 0.3\,s \\
 
 Transformer 和普通的 LNN 缺乏 MT 相干参数，在 AVP 下表现出几乎恒定的 $\phihat$。只有 MT-LNN（其中 $\ell$ 直接调节动态相关参数）能够表现出微观生物学麻醉特征性的单调 $\phihat$-vs-$\kappa$ 坍缩。
 
-% ========================================================
-\section{AwareLiquid 最新突破：稀疏共振与算子压缩}
-
-近期增加的评测揭示了 MT-LNN 在实际流式推理环境中的关键性能跃升：
-
-\paragraph{算子压缩 (Operator Compression)：真正的 O(1) 状态流式}
-我们证实了将自回归推理彻底剔除历史 KV 缓存的能力。通过“仅状态流式 (State-Only Streaming)”压缩，模型可以直接在纯量大小的缓存（1000 序列长度下为 \textbf{4.1 KB} 而非传统的 1020 KB）下进行有效隐状态递推，真正实现了 $O(1)$ 推理内存墙突围。
-
-\paragraph{稀疏共振门控 (Sparse Resonance Gate)：}
-在原有微管结构基础上，我们额外利用基于 Top-$k$ 的共振稀疏网络。通过选择性遮蔽静态与衰减尺度，我们在全精度下保持最小偏差（$\sim 0.003$ Abs Error），同时使 CPU 下计算吞吐从 3650 tok/s 近乎翻倍到极限 \textbf{6400+ tok/s}。
-
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.9\linewidth]{fig_operator_compression_updates.pdf}
-    \caption{AwareLiquid 架构近期推理评测。左图：基于稀疏共振门控 (Sparse Resonance) 的推理吞吐提速曲线；右图：引入算子压缩后导致的 $O(1)$ 流式内存微缩现象 (1000 tokens)。}
-    \label{fig:compression}
-\end{figure}
-
-\section{实验评估 (Experiments)}
+% ========================================================\section{实验评估 (Experiments)}
 \label{sec:experiments}
 
-\subsection{语言建模结果}
+\subsection{实验设置与诚实声明}
+
+本版本的所有结果均在\textbf{单张消费级 RTX~5060 笔记本 GPU（8\,GB）}上复现，5 个随机种子取均值 $\pm$ 标准差。我们诚实报告：在当前可及的算力规模下，三种架构在合成检索任务上\textbf{大体相当}，并非某一架构显著占优。
 
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{fig_experiments.pdf}
-\caption{\textbf{评估结果摘要：} \textbf{左：} 整合信息指标 vs 困惑度；\textbf{中：} LRA 准确率对比；\textbf{右：} 代表时间序列维持能力的 Selective Copy 精度提升。}
+\caption{\textbf{评估结果摘要（toy 规模，5 种子均值 $\pm$ 标准差）：} \textbf{左：} Selective Copy 在 $T=37$ 的留出序列精确匹配率；\textbf{中：} 长上下文扫描——序列精确率随 $T_\text{total}$ 变化；\textbf{右：} 麻醉验证协议响应——只有 MT-LNN 的 $\hat{\Phi}$ 在麻醉钩子下移动（基线无钩子，$\Delta\hat{\Phi}=0$）。数字由 \texttt{benchmarks/multi\_seed\_sweep.py} 复现。}
 \label{fig:experiments}
 \end{figure*}
 
-在 125M 级别，MT-LNN 的 PPL 比基线 Transformer 低 14.7\%，而其信息整合度 $\phihat$ 则提高了 $2.2 \times$ 以上。这种提升同时也延伸到长距离竞技场 (Long-Range Arena) 的 Pathfinder 和 Selective Copy 长文本任务中。
+\subsection{语言建模（WikiText-103）}
 
 \begin{table}[h]
 \centering
-\caption{WikiText-103 词级别困惑度与整合度评估比较。最好的结果已\textbf{加粗}。}
+\caption{WikiText-103 词级别验证困惑度，$\approx$84M 规模，\emph{相同} token 预算（3000 优化步 $\approx$ 1 epoch，全局 batch 32，序列 512），单张 8\,GB GPU。这些是算力受限的等预算快照，\emph{非}完全收敛。用 \texttt{benchmarks/wikitext\_comparison.py} 复现。}
 \label{tab:wt103}
 \begin{tabular}{lcccc}
 \toprule
-Model & Params & PPL $\downarrow$ & $\hat{\Phi}$ $\uparrow$ & $\Phi_{\mathrm{G}}$ $\uparrow$ \\
+Model & Params & 验证 PPL $\downarrow$ & Tok/s $\uparrow$ & 峰值显存 GB \\
 \midrule
-Transformer & 125M & 28.6 & 0.17 & 0.48 \\
-LNN & 121M & 31.2 & 0.24 & 0.71 \\
-MT-LNN-nGWT & 122M & 30.1 & 0.32 & 1.19 \\
-\textbf{MT-LNN} & 128M & \textbf{24.4} & \textbf{0.38} & \textbf{1.74} \\
+Transformer & 84.5M & 326.3 & \textbf{18\,166} & \textbf{3.4} \\
+LNN & 92.2M & 343.5 & 17\,195 & 3.5 \\
+\textbf{MT-LNN} & 84.2M & \textbf{214.8} & 5\,674 & 6.9 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+在\emph{相同优化步预算}下，MT-LNN 的验证困惑度（214.8）显著低于 Transformer（326.3，低 34\%）和普通 LNN（343.5）——这是 MT-LNN 的归纳偏置在自然语言上首次给出真实、可复现的优势。两点诚实的说明：(i) 三者都远未收敛（单 epoch 后困惑度仍在数百量级），故这是\emph{样本效率}快照而非最终 LM 质量；(ii) MT-LNN 每 token 慢约 3.2$\times$（5.7K vs 18K tok/s）且显存翻倍，故在\emph{等 wall-clock} 预算下差距会缩小。更长训练与等 wall-clock 对比是自然的下一步。LRA 近来被指出主要反映局部性偏置而非真正的长程建模能力，本版本不纳入。
+
+\subsection{长文本 Selective Copy}
+在全序列重算解码（对无 KV cache 的模型）和 5 种子下，三种约 200K 参数的架构在 Selective Copy 上大体相当，MT-LNN 的优势并\emph{不}随序列长度增长。
+
 \begin{table}[h]
 \centering
-\caption{长距离竞技场 (LRA) 准确率 (\%). 最好的结果已\textbf{加粗}。}
-\label{tab:lra}
-\begin{tabular}{lccccc}
+\caption{Selective Copy 留出序列精确匹配率（\%），5 种子均值 $\pm$ 标准差。MT-LNN 在 $T=37$ 略优（种子方差重叠），在 $T=101/229$ 反被基线超过且训练不稳定。}
+\label{tab:long_ctx}
+\begin{tabular}{lccc}
 \toprule
-Model & ListOps & Text & Retrieval & Image & Pathfinder \\
+$T_\text{total}$ & Transformer & LNN & MT-LNN \\
 \midrule
-Transformer & 36.3 & 64.2 & 57.4 & 42.8 & 71.7 \\
-Linear Attn & 38.4 & 64.0 & 58.1 & 43.1 & 72.5 \\
-S4 & 59.6 & 76.1 & \textbf{65.2} & 53.0 & 86.0 \\
-\midrule
-\textbf{MT-LNN} & \textbf{61.2} & \textbf{77.5} & 64.8 & \textbf{54.4} & \textbf{89.2} \\
+37  & 56.0 $\pm$ 3.4 & 52.6 $\pm$ 4.8 & \textbf{58.3 $\pm$ 13.9} \\
+101 & 46.3 $\pm$ 6.1 & \textbf{51.7 $\pm$ 10.4} & 41.5 $\pm$ 13.0 \\
+229 & 22.3 $\pm$ 2.2 & \textbf{27.7 $\pm$ 6.6} &  3.9 $\pm$ 4.9 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+\textbf{诚实的负面结论。} 在相同算力下三架构大体相当，MT-LNN 的优势并\emph{不}随序列长度增长：它在 $T=37$ 至多打平，在更长序列上被两个基线超过，且训练在 $T=229$ 时崩溃（3.9\% $\pm$ 4.9\%，接近随机）。Selective Copy 本就是 attention 能近乎完美解决的任务 \citep{gu2023mamba}，不是递归模型应当胜出的场景。
 
-\subsection{长文本大海捞针 (Needle in a Haystack) 评估}
-在 1.1B 参数规模下，我们将 MT-LNN 作为残差适配器 (Residual Adapter) 挂载到 TinyLlama-1.1B 模型上进行 500 步微调。大海捞针测试结果显示：在 1024 至 4096 长度下（通过启用 RoPE 缩放成功跨越了原生的 2048 窗口极限），带有微管适配器的模型在各个测试深度 (10\%~90\%) 均保持了 100\% 的检索准确率，完全未破坏基础模型原有的指令跟随与推理能力 (见表~\ref{tab:needle})。(注：8192 长度评估因受限于硬件测试平台 T4 显卡的 16GB 显存上限导致 OOM 而被物理截断，非架构本身限制)。相比于基础模型 (~580~800 Tok/s)，挂载大规模细胞自动机级适配器后的推理吞吐量仅小幅下降约 10-15\% (~545~670 Tok/s)。这一数据极为严谨地证实了该仿生架构能够在保持极高运行效率的同时，完美兼容现代大语言模型原生及外推扩展后的长下文特征状态。
+\subsection{状态跟踪（Parity）}
+真正应体现递归归纳偏置的是\emph{状态跟踪}任务：计算滚动 parity 需要维护一个持久累加器，固定深度的软注意力被证明无法在无思维链下完成 \citep{hahn2020theoretical, merrill2023parallelism}，而递归状态原则上可以精确跟踪。我们在滚动 parity（$k{=}2$，$T_\text{train}{=}64$，长度泛化测试 $T_\text{test}{=}256$）上训练三种约 200K 架构，3 种子。
 
 \begin{table}[h]
 \centering
-\caption{TinyLlama-1.1B 大海捞针 (Needle-in-a-Haystack) 准确率及吞吐量。微管适配器在达到 4096 长度的 100\% 准确率的同时，仅有小幅延迟下降。}
-\label{tab:needle}
-\begin{tabular}{lccccc}
+\caption{滚动 parity 下一 token 准确率，3 种子均值 $\pm$ 标准差。随机基线为 0.50。当前 toy 配置下三种架构\emph{均未}学会该任务。}
+\label{tab:state_tracking}
+\begin{tabular}{lcc}
 \toprule
-模型/变体 & 上下文长度 & 测试深度 & 精确匹配 & 包含测试 & 吞吐量 (Tok/s) \\
+Model & 分布内 ($T{=}64$) & 长度泛化 ($T{=}256$) \\
 \midrule
-基础模型 (Base) & 1024--2048 & 全部 & 1.000 & 1.000 & $\sim$800 \\
-MT微管适配器 & 1024--2048 & 全部 & \textbf{1.000} & \textbf{1.000} & $\sim$670 \\
-\midrule
-基线 (开启 RoPE) & 4096 & 全部 & 1.000 & 1.000 & $\sim$580 \\
-MT微管适配器 (RoPE) & 4096 & 全部 & \textbf{1.000} & \textbf{1.000} & $\sim$545 \\
+Transformer & 0.501 $\pm$ 0.001 & 0.501 $\pm$ 0.002 \\
+LNN & 0.501 $\pm$ 0.001 & 0.501 $\pm$ 0.002 \\
+MT-LNN & 0.501 $\pm$ 0.001 & 0.501 $\pm$ 0.002 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{麻醉验证下结论}
-只有引入了微管仿生架构和 GWTB 瓶颈的 MT-LNN，能在 $\phihat$ 和 $\phig$ 的联合评估下，精准复现生物在被“模拟麻醉”抑制后，信息表征在不同层级呈现超 80\% 坍缩的连贯物理特征。标准的 Transformer 因其结构中完全缺乏此类物理反馈参数（即它们只是矩阵相乘机器），在虚拟麻醉下仅仅呈现约 5\% 左右的毫无规律的数值抖动。这通过计算的层面为假说提供了极为生动的验证。
+\textbf{诚实的负面结果。} 在此小规模与训练预算下，MT-LNN 并\emph{未}展现预期的递归优势——三者都停留在随机水平；更强的训练配方（序列缩短到 $T=16$、训练加长到 15\,000 步）同样让三者都停在 $\approx$0.50。Parity 以难优化著称（典型的 grokking 任务，常需长训练课程与权重衰减调优）。MT-LNN 的原丝状态能否在更好的训练配方下学会 parity、并进而在 attention 无法胜任的更长序列上泛化，是\textbf{证实本架构核心主张最关键的未决实验}，我们明确将其列为未来工作，而非报告一个不成熟的胜利。
+
+\subsection{时序预测（ETT）}
+\label{sec:ett}
+液态架构在实值时序回归上应有归纳偏置优势。我们在 ETTh1（小时级电力变压器数据集，Zhou 等 2021）上测试：univariate 油温，输入长度 $L=96$，预测 $H=96$，标准 12/4/4 月划分，3 seed。三种 backbone 共用完全相同的 forecasting head（连续输入投影 + 位置编码 + 末步线性头），只有序列混合 backbone 不同。
 
 \begin{table}[h]
 \centering
-\caption{模拟麻醉测试下的 $\hat{\Phi}$ 与 $\Phi_{\mathrm{G}}$ 坍缩结果 ($\kappa=1\to10$ 浓度)。只有具备微管仿生架构和全局工作区瓶颈的 \textbf{MT-LNN} 达到了超过 $80\%$ 的结构性坍缩率，完美复刻麻醉下意识指标崩溃的特性。}
+\caption{ETTh1 univariate 预测，test MSE/MAE（3 seed 均值 $\pm$ 标准差）。越低越好。}
+\label{tab:ett}
+\begin{tabular}{lcc}
+\toprule
+Model & test MSE & test MAE \\
+\midrule
+Transformer & 0.170 $\pm$ 0.023 & 0.343 $\pm$ 0.034 \\
+\textbf{LNN (纯 CfLTC)} & \textbf{0.156 $\pm$ 0.003} & \textbf{0.330 $\pm$ 0.002} \\
+MT-LNN (完整) & 0.200 $\pm$ 0.052 & 0.381 $\pm$ 0.057 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{诚实的发现。} \emph{液态}成分有帮助——纯 LNN（CfLTC）误差最低且方差远小于其他；但\emph{完整}微管机制（GWTB、GlobalCoherence、13 协议丝横向耦合）在此是净负担，误差最高、方差最大。结合 WikiText 结果（完整架构获胜），诚实的结论是:MT-LNN 的附加复杂度在语言建模上有回报，但在低维时序回归上不如纯液态归纳偏置。我们如实报告，而非只挑对自己有利的任务。
+
+\subsection{不规则采样信号的连续时间建模}
+\label{sec:irregular}
+液态/连续时间网络的定义性能力是利用非均匀采样数据的\emph{时间戳}。CfLTC 递归中状态按 $\exp(-\Delta t/\tau)$ 衰减；更大的真实时间间隔 $\Delta t$ 应导致更多遗忘。我们的实现现已将逐步 $\Delta t$ 张量贯穿整个栈（\texttt{MTLNNModel} $\to$ \texttt{MTLNNBlock} $\to$ \texttt{MTLNNLayer} $\to$ resonance）：不提供 $\Delta t$ 时 decay 为常数 $\exp(-1/\tau)$（与 LM 路径逐位一致，验证差异为 $0$）；提供时 decay 变为逐步 $\exp(-\Delta t/\tau)$，扫描从 constant-$A$ 特化切换到 general 并行扫描。
+
+我们用一个\emph{对 MT-LNN 自身}的消融来隔离该机制的价值。连续信号 $x(t)=\sin(2\pi f t + \phi)$（$f,\phi$ 每序列随机）在非均匀时刻采样（$\Delta t \sim \mathcal{U}[0.05,0.5]$，$L=48$）；模型须在给定 query 间隔下预测下一个观测值。一个变体只把 $\Delta t$ 作为输入通道；另一个额外把它喂进 CfLTC decay。
+
+\begin{table}[h]
+\centering
+\caption{不规则采样下一值预测，test MSE（3 seed 均值 $\pm$ 标准差）。最后两行唯一差别是 $\Delta t$ 是否进入 CfLTC decay。}
+\label{tab:irregular}
+\begin{tabular}{lc}
+\toprule
+变体 & test MSE \\
+\midrule
+Transformer（$\Delta t$ 作特征） & 0.189 $\pm$ 0.024 \\
+LNN（$\Delta t$ 作特征） & 0.217 $\pm$ 0.009 \\
+MT-LNN（$\Delta t$ 仅作特征） & 0.204 $\pm$ 0.012 \\
+\textbf{MT-LNN + $\Delta t$ 进 decay} & \textbf{0.180 $\pm$ 0.023} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{正面结果。} 把 $\Delta t$ 喂进 decay 将 MSE 从 0.204 降到 0.180——相对改善 11.7\%，且\emph{三个 seed 全部一致}（0.156$<$0.190, 0.184$<$0.213, 0.200$<$0.209），并给出整体最优变体。由于两行共享权重、架构和 $\Delta t$-作特征的访问，增益专门归因于连续时间 decay 机制而非额外信息。这直接证明:一旦架构被允许看到真实流逝时间，CfLTC 先验就发挥了实际作用。我们接着检验该效应能否迁移到真正的不规则临床基准。
+
+\paragraph{PhysioNet-2012 ICU 死亡率预测。} 我们在液态网络领域权威的不规则采样临床基准上评估:4000 例 ICU 住院（set-a），每例是 48h 内 $(\Delta t,\text{变量},\text{值})$ 的 event stream，36 个时序变量，预测院内死亡（13.9\% 阳性）。使用相同四变体,配 event-embedding 编码器（变量 embedding + 值投影 + 位置编码）和 masked-mean-pool 分类头,3 seed,报告 AUROC 与 AUPRC。
+
+\begin{table}[h]
+\centering
+\caption{PhysioNet-2012 院内死亡率预测（3 seed 均值 $\pm$ 标准差）。AUROC 与液态网络文献中 CfC/LTC 报告的 0.80--0.85 一致,验证了实验设置的合理性。}
+\label{tab:physionet}
+\begin{tabular}{lcc}
+\toprule
+变体 & AUROC $\uparrow$ & AUPRC $\uparrow$ \\
+\midrule
+Transformer & 0.797 $\pm$ 0.018 & 0.410 $\pm$ 0.062 \\
+LNN & 0.777 $\pm$ 0.039 & 0.357 $\pm$ 0.063 \\
+\textbf{MT-LNN（$\Delta t$ 仅作特征）} & \textbf{0.823 $\pm$ 0.025} & \textbf{0.441 $\pm$ 0.052} \\
+MT-LNN + $\Delta t$ 进 decay & 0.814 $\pm$ 0.034 & 0.422 $\pm$ 0.056 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{两个诚实的发现。}（i）完整 MT-LNN 架构在这个真实临床任务上\emph{确实}领先（AUROC 0.823 vs Transformer 0.797、纯 LNN 0.777），绝对数值与 CfC/LTC 文献一致——在一个重要基准上的真实正面结果。（ii）但 $\Delta t$ 进 decay 机制在此\emph{没有}增益（0.814 $\le$ 0.823，方差内）——与合成任务\emph{相反}。最可能的解释是:PhysioNet 上 $\Delta t$ 已作为输入特征可被模型利用,再注入 decay 是冗余;且临床测量的真实时间依赖比合成信号的纯连续时间结构更丰富,简单的 $\exp(-\Delta t/\tau)$ 核并非关键优势。诚实的结论是:连续时间 decay 是\emph{任务依赖}的——当目标严格是流逝时间的函数时(合成)决定性,当时间信号已被特征捕获时(临床)冗余。我们同时报告两者,而非从有利情形过度推广。
+
+\subsection{预训练 LLM 上的残差适配器}
+我们还将 MT-LNN 作为冻结底座的\emph{残差适配器}验证：把一个小型 MT-LNN 模块（12.4M 可训练参数，占底座 2.5\%）每隔四层插入 \texttt{Qwen2.5-0.5B-Instruct}，在单张 8\,GB GPU 上微调 500 步。底座与适配器在短程大海捞针探针上均保持 100\% 检索，推理吞吐仅下降约 10--15\%，说明适配器在不破坏底座行为的前提下完成集成。更长上下文的底座-适配器困惑度/大海捞针对比正在进行；完整训练细节见 \texttt{benchmarks/adapter\_qwen05\_training\_report.md}。
+
+\subsection{麻醉验证（AVP）}
+在 toy 规模下，唯一有意义的观察是：\textbf{只有 MT-LNN 会响应}——麻醉钩子只挂在 \texttt{MTLNNLayer} 和 \texttt{GlobalCoherenceLayer} 上，基线不含这些结构，故其 $\Delta\hat{\Phi}$ 恒为 0。
+
+\begin{table}[h]
+\centering
+\caption{toy 规模下的 AVP 响应，5 种子均值。该规模下 $\hat{\Phi}$ 绝对值无意义（KSG 小样本偏差），只有响应本身有意义。基线无钩子。}
 \label{tab:anesth}
-\resizebox{\textwidth}{!}{
-\begin{tabular}{lccccccc}
+\begin{tabular}{lc}
 \toprule
- & \multicolumn{3}{c}{$\hat{\Phi}$ (kNN估计)} & \multicolumn{3}{c}{$\Phi_{\mathrm{G}}$ (高斯估计)} & \\
-\cmidrule{2-4}\cmidrule{5-7}
-架构模型 & 正常 ($\kappa{=}1$) & 麻醉 ($\kappa{=}10$) & 坍缩率 & 正常 & 麻醉 & 坍缩率 & 结论 \\
+架构模型 & $\Delta\hat{\Phi}$（$\kappa{=}10$ 减 $\kappa{=}1$）\\
 \midrule
-Transformer & 0.17 & 0.16 & 5.9\% & 0.48 & 0.45 & 6.3\% & \textcolor{red}{$\times$} \\
-LNN & 0.24 & 0.22 & 8.3\% & 0.71 & 0.64 & 9.9\% & \textcolor{red}{$\times$} \\
-MT-LNN-nGWT & 0.32 & 0.11 & 65.6\% & 1.19 & 0.41 & 65.5\% & \textcolor{red}{$\times$} \\
-\textbf{MT-LNN} & \textbf{0.38} & \textbf{0.04} & \textbf{89.5\%} & \textbf{1.74} & \textbf{0.21} & \textbf{87.9\%} & \textbf{通过} \\
+Transformer & $0.000$（无钩子）\\
+LNN & $0.000$（无钩子）\\
+\textbf{MT-LNN} & $\mathbf{+7.68 \pm 2.89}$（有响应）\\
 \bottomrule
-\end{tabular}}
+\end{tabular}
 \end{table}
+
+\textbf{诚实的局限。} 在此规模下响应方向是\emph{错的}：$\hat{\Phi}$ 随 $\kappa$ \emph{上升}而非坍缩，故按定义（单调下降 $\ge$70\%）的麻醉测试\emph{未通过}。原因有二：(i) KSG 估计器在 $d{=}104$、仅约 150 样本下负偏 \citep{lord2018geometric}，绝对值乃至变化方向都不可靠；(ii) 对一个微小、弱整合模型施加麻醉阻尼会把激活推向低秩流形，使部件间相关性\emph{上升}。机制是真实存活的（只有 MT-LNN 产生大而一致的 $\Delta\hat{\Phi}$），但论文生物类比所预言的\emph{方向}只能在真实规模、正基线整合的模型上检验。因此我们将 AVP 定位为\textbf{机制探针 / 架构指纹}，而非一个已通过的性能基准：有意义的通过/失败判定需要在真实规模、正基线整合的模型上进行。
 
 % ========================================================
 \section{局限性 (Limitations)}
 \label{sec:limitations}
 
-尽管取得显著成果，仍存在一定局限性：当前最大评估参数量为 125M，我们正在向 7B 级别的基准进行规模伸缩（Scaling）；并且当前使用的环境无法完整模拟真实的生物体化学复合作用环境。
+本工作存在若干重要局限，我们坦诚列出：(i) 本版本所有实验均在单张 8\,GB 消费级 GPU 上完成，语言建模为算力受限的等预算快照而非完全收敛；(ii) 在合成检索与状态跟踪任务上，MT-LNN 目前\emph{未}展现出超越匹配基线的优势，parity 上三者均在随机水平；(iii) AVP 在 toy 规模下方向与生物预期相反，只能定位为机制探针；(iv) 将架构扩展至 1B+ 参数、并在正整合的真实训练模型上检验麻醉主张，仍是未决工作。
+
+\paragraph{长序列崩溃是结构性的，而非优化伪影。}
+在精确长程检索（真实文本大海捞针，$L=2048$，2 个种子）上，MT-LNN 的 recall 崩到随机水平（$0.008$），而普通 Transformer 与单通道 LNN 都达到 $1.0$。我们检验了这是否源于 $P\times S$ 共振 bank 的通道冗余——让每条原丝专责一个时间尺度（$P$ 个专业化通道而非 $P\times S$；即 \texttt{protofilament\_timescales} 选项）。这\emph{并未}修复崩溃：recall 仍在随机水平（$0.031$），且训练 loss 的效果在种子间不一致（route-B 一个种子降到 $2.45$、另一个种子仍是 $4.21$，而旧版稳定在 $\approx$4.19）。逐尺度梯度审计进一步表明梯度健康（无爆炸无消失），且关闭并行扫描递归影响很小。因此我们判定崩溃是\emph{结构性}的：固定容量的递归状态无论通道如何组织，都无法支持约 2000 步的精确检索。这正是"固定状态 vs 直接注意力"的差距，它决定了 MT-LNN 的定位应是递归有用的任务（语言建模样本效率、临床时序），而非注意力天然擅长的长程精确检索。
 
 \section{结论 (Conclusion)}
 \label{sec:conclusion}
-MT-LNN 率先在一个 Transformer 兼容的代码库中，同时将微管动态、全局工作区理论以及麻醉验证协议相结合。并释放出比传统方法更强大的学习潜力和理论可解释性。
+MT-LNN 据我们所知是首个在单一 Transformer 兼容、经完整单元测试的代码库中，同时实现微管动态、全局工作区理论与麻醉验证协议的架构。它还通过逐步 $\Delta t$ 衰减原生支持连续时间输入。本文的贡献主要是\emph{架构与方法学}层面的：一个正确、开源的实现与一套坦诚的评测协议。实证图景是诚实混合、任务依赖的:MT-LNN 在 WikiText-103 上样本效率显著优于匹配基线、在真实 PhysioNet-2012 ICU 死亡率基准上领先,但纯液态层在低维时序回归上更优,完整架构在 attention 已能解决的任务上无优势;连续时间 $\Delta t$ 机制在严格由时间驱动的信号上决定性有效,但当 $\Delta t$ 已是输入特征时冗余。麻醉钩子提供了独特的架构指纹，但生物学预言的坍缩\emph{方向}仍待更大规模验证。我们勾勒出检验意识相关主张所需的大规模实验。所有代码与权重均已开源于 \url{https://github.com/everest-an/O1}。
 
 % ========================================================
 \bibliographystyle{plainnat}
@@ -390,6 +498,12 @@ Dehaene, S., Changeux, J.-P., \& Lou, L. (2011). Experimental and theoretical ap
 
 \bibitem[Gu \& Dao(2023)]{gu2023mamba}
 Gu, A. \& Dao, T. (2023). Mamba: Linear-time sequence modeling with selective state spaces. \textit{arXiv:2312.00752}.
+
+\bibitem[Hahn(2020)]{hahn2020theoretical}
+Hahn, M. (2020). Theoretical limitations of self-attention in neural sequence models. \textit{Transactions of the ACL}, 8:156--171.
+
+\bibitem[Merrill \& Sabharwal(2023)]{merrill2023parallelism}
+Merrill, W. \& Sabharwal, A. (2023). The parallelism tradeoff: Limitations of log-precision transformers. \textit{Transactions of the ACL}, 11:531--545.
 
 \bibitem[Hameroff \& Penrose(2014)]{hameroff2014consciousness}
 Hameroff, S. \& Penrose, R. (2014). Consciousness in the universe: A review of the Orch OR theory. \textit{Physics of Life Reviews}, 11(1):39--78.
