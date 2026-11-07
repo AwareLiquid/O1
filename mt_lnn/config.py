@@ -75,6 +75,15 @@ class MTLNNConfig:
     # Global coherence (Orch-OR collapse, complementary to GWTB)
     coherence_sparsity: float = 0.1  # keep top 10% of attention scores
     coherence_heads: int = 4
+    
+    # Working memory / exponential decay in Global Coherence KV.
+    # Set to True to replace persistent KV cache with an O(1) state buffer.
+    use_decay_wm: bool = True
+    wm_decay_rate_init: float = 0.99
+
+    # Endogenous Compute Skipping (Hard gating threshold)
+    # Automatically zeros out dynamic_kappa connections < threshold.
+    compute_skip_threshold: float = 0.0
 
     # Regularization
     dropout: float = 0.1
@@ -82,6 +91,36 @@ class MTLNNConfig:
 
     # Misc
     tie_embeddings: bool = True
+
+    # Predictive Coding across tau channels
+    use_predictive_coding: bool = True
+    predictive_loss_weight: float = 0.05
+
+    # Direct target extraction head. This auxiliary head reads the final
+    # contextual state once and emits a fixed number of target slots, so tasks
+    # such as Selective Copy can be evaluated without autoregressive decoding.
+    direct_target_max_len: int = 16
+    # Whether to BUILD the direct-extraction head (target_queries/target_norm/
+    # target_head). It is an UNTIED nn.Linear(d_model, vocab_size) -> ~vocab*d_model
+    # params (e.g. 62.7M at d_model=1248, vocab=50257) that plain causal-LM
+    # pretraining never touches (it only fires when return_target_logits /
+    # direct_target_labels is passed). Default True preserves existing behavior;
+    # set False for from-scratch LM pretraining to spend that budget on depth
+    # instead of dead weight. Requesting target logits with it off raises.
+    use_target_head: bool = True
+    
+    # Optional Causal Chain and Self-Monitor Extraction Heads (Phase 2 & 3)
+    use_causal_head: bool = False
+    use_self_monitor_head: bool = False
+
+    # Dynamic multi-scale tau gates. The first phase only gates the blend over
+    # already-computed tau scales; compute skipping is kept behind a later flag.
+    dynamic_scale_gates: bool = True
+    scale_gate_init_bias: float = 2.0
+    scale_gate_active_threshold: float = 0.5
+    scale_gate_skip_threshold: float = 0.0
+    sparse_resonance_kernel: bool = False
+    sparse_resonance_top_k: int = 1
 
     # Derived (set in __post_init__)
     d_proto: int = field(init=False)

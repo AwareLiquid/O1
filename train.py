@@ -16,6 +16,7 @@ Pipeline:
 """
 
 import argparse
+import glob
 import json
 import math
 import os
@@ -27,6 +28,32 @@ from torch.utils.data import DataLoader, Dataset
 
 from mt_lnn import MTLNNConfig, MTLNNModel
 from mt_lnn.utils import make_param_groups, WarmupCosineScheduler, save_checkpoint
+
+
+def prune_old_checkpoints(ckpt_dir: str, keep_last: int) -> list:
+    """Delete all but the *keep_last* most recent step-checkpoints in *ckpt_dir*.
+
+    Each checkpoint carries model + Adam optimizer state (~2.4 GB for the 200M
+    config), so on a capped volume like Kaggle's ~20 GB /kaggle/working, keeping
+    every save fills the disk and the next write fails mid-stream ("No space left
+    on device"). This keeps the K newest ``ckpt_<step>.pt`` files and removes the
+    rest. ``final.pt`` is named differently and is never matched/pruned here.
+
+    Step files use zero-padded 6-digit names (``ckpt_016000.pt``), so plain
+    lexicographic sort equals numeric (step) order. Returns the list of removed
+    paths. keep_last <= 0 disables pruning (returns []).
+    """
+    if keep_last <= 0:
+        return []
+    saved = sorted(glob.glob(os.path.join(ckpt_dir, "ckpt_[0-9]*.pt")))
+    removed = []
+    for old in saved[:-keep_last]:
+        try:
+            os.remove(old)
+            removed.append(old)
+        except OSError as exc:
+            print(f"  WARN could not prune {old}: {exc}")
+    return removed
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +84,15 @@ class BinDataset(Dataset):
         start = min(base + np.random.randint(0, self.stride), max_start)
         chunk = self.data[start: start + self.seq_len + 1].astype(np.int64)
         x = torch.from_numpy(chunk[:-1])
-        y = torch.from_numpy(chunk[1:])
+        # HF / MTLNNModel convention: labels are ALIGNED with inputs
+        # (labels[i] <-> input token i). MTLNNModel.forward shifts internally
+        # (shift_logits = logits[:, :-1] vs shift_labels = labels[:, 1:]) to
+        # build the next-token target. Returning chunk[1:] here would DOUBLE-
+        # shift, so the model optimises a skip-one objective (predict chunk[i+2]
+        # from chunk[:i]) -- looks healthy in train loss (PPL ~20) but wrecks
+        # autoregressive generation (true next-token PPL ~800+).
+        # See tests/test_label_alignment.py.
+        y = x.clone()
         return x, y
 
 
@@ -72,7 +107,9 @@ class DummyDataset(Dataset):
 
     def __getitem__(self, idx):
         ids = torch.randint(0, self.vocab_size, (self.seq_len + 1,))
-        return ids[:-1], ids[1:]
+        # labels aligned with inputs; MTLNNModel shifts internally (see BinDataset).
+        x = ids[:-1]
+        return x, x.clone()
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +171,10 @@ def train(args):
     # ------------------------------------------------------------------
     # Model
     # ------------------------------------------------------------------
+    # Only build the (large, untied) direct-extraction head when a target path
+    # actually trains/uses it. Plain causal-LM pretraining leaves it off so the
+    # ~vocab*d_model budget goes to depth instead of dead weight.
+    want_target_head = bool(args.train_target_head) or args.target_loss_weight > 0.0
     config = MTLNNConfig(
         d_model=args.d_model,
         n_layers=args.n_layers,
@@ -142,10 +183,18 @@ def train(args):
         d_head=args.d_model // args.n_heads,
         max_seq_len=args.seq_len,
         dropout=args.dropout,
+        use_target_head=want_target_head,
         **cfg_kwargs,
     )
     model = MTLNNModel(config).to(device)
     n_params = model.get_num_params()
+    if args.train_target_head:
+        for param in model.parameters():
+            param.requires_grad = False
+        for name, param in model.named_parameters():
+            if name.startswith("target_"):
+                param.requires_grad = True
+        print("Direct target mode: backbone frozen; training target_queries/target_norm/target_head only.")
     print(f"Parameters: {n_params/1e6:.1f}M  (config: {config.d_model}d × {config.n_layers}L × {config.n_heads}H, GQA={config.n_kv_heads})")
 
     # torch.compile for speed (skip on CPU since the gain isn't there)
@@ -208,8 +257,23 @@ def train(args):
             lbl = lbl.to(device, non_blocking=True)
 
             with torch.amp.autocast(device_type="cuda", enabled=use_amp, dtype=amp_dtype):
-                out = model(inp, labels=lbl)
-                loss = out["loss"] / args.grad_accum
+                if args.train_target_head or args.target_loss_weight > 0.0:
+                    direct_len = args.direct_target_len
+                    direct_labels = lbl[:, -direct_len:].contiguous()
+                    out = model(
+                        inp,
+                        labels=None if args.train_target_head else lbl,
+                        direct_target_labels=direct_labels,
+                        target_len=direct_len,
+                        return_target_logits=True,
+                    )
+                    raw_loss = out["target_loss"] if args.train_target_head else (
+                        out["loss"] + args.target_loss_weight * out["target_loss"]
+                    )
+                else:
+                    out = model(inp, labels=lbl)
+                    raw_loss = out["loss"]
+                loss = raw_loss / args.grad_accum
 
             scaler.scale(loss).backward()
             accum_loss_sum += loss.item() * args.grad_accum
@@ -264,6 +328,12 @@ def train(args):
                 base_model = getattr(model, "_orig_mod", model)
                 save_checkpoint(base_model, optimizer, step, 0.0, ckpt_path, config)
                 print(f"  saved {ckpt_path}")
+                # Roll off old checkpoints to stay inside the disk budget (see
+                # prune_old_checkpoints). Without this, every 2.4 GB save is kept
+                # and the ~20 GB Kaggle volume fills, failing the next write.
+                for pruned in prune_old_checkpoints(args.ckpt_dir,
+                                                    args.keep_last_ckpts):
+                    print(f"  pruned {pruned}")
 
     # Final save
     base_model = getattr(model, "_orig_mod", model)
@@ -307,6 +377,10 @@ def parse_args():
     p.add_argument("--eval_every",    type=int,   default=500)
     p.add_argument("--eval_batches",  type=int,   default=50)
     p.add_argument("--save_every",    type=int,   default=2000)
+    # Keep only the most recent K step-checkpoints on disk (each is ~2.4 GB with
+    # optimizer state). Prevents "No space left on device" on capped volumes like
+    # Kaggle's ~20 GB /kaggle/working. 0 disables pruning (keep everything).
+    p.add_argument("--keep_last_ckpts", type=int, default=3)
     p.add_argument("--ckpt_dir",      type=str,   default="checkpoints")
     p.add_argument("--data_dir",      type=str,   default="data")
     p.add_argument("--num_workers",   type=int,   default=2)
@@ -318,6 +392,12 @@ def parse_args():
     p.add_argument("--dummy",         action="store_true", help="Use random data")
     p.add_argument("--vocab_size",    type=int,   default=None,
                                        help="Override vocab_size (only with --dummy)")
+    p.add_argument("--train_target_head", action="store_true",
+                   help="Freeze the backbone and train only the direct target extraction head")
+    p.add_argument("--direct_target_len", type=int, default=4,
+                   help="Number of target slots supervised by the direct extraction head")
+    p.add_argument("--target_loss_weight", type=float, default=0.0,
+                   help="Optional auxiliary direct-target loss weight during normal LM training")
     return p.parse_args()
 
 
